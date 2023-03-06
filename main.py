@@ -178,17 +178,37 @@ def btnmessageToUser(botId, userId):
             "type": "button_template",
             "contentText": "출퇴근시간 기록",
             "actions": [{
-            "type": "message",
-            "label": "WorksMobile Homepage",
-            "uri": "https://line.worksmobile.com"
-            }, {
-            "type": "message",
-            "label": "FAQ",
-            "postback": "ButtonTemplate_FAQ"
-            }]
+                "type": "message",
+                "label": "출근",
+                "postback" : "work"
+                }, {
+                "type": "message",
+                "label": "퇴근",
+                "postback": "workoff"
+                }
+            ]
         }
     }
     response = requests.post(url, headers=headers, data=json.dumps(request_body))
+
+functions = {
+    'message' : message_handler,
+    'postback' : postback_handler,
+    'leave' : leave_handler,
+    'join' : join_handler,
+    'left' : left_handler
+
+}
+
+def postback_handler(data):
+
+    userId = data['source']['userId']
+    # postback data어떻게 오는지 확인하고 처리하기
+    issued_time = data['issuedTime']
+    action = data['data']
+    return userId
+
+
 access_token = None
 @app.route('/', methods=['GET', 'POST'])
 def home():
@@ -199,11 +219,15 @@ def home():
     # requests.get(api_url).json()  
 
     data = request.get_json()
-    print(type(data))
+    request_type = data['type']
+
+    userId = functions[request_type](data)
+
+
     botId = 5094423
     
     # register_persistent_menu()
-    userId = message_handler(data)
+    # userId = message_handler(data)
     btnmessageToUser(botId, userId)
 
     # richmenuId = '914034'
