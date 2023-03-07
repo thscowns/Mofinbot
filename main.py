@@ -3,6 +3,7 @@ from flask import request
 
 # from flask_restx import Resource
 
+from datetime import datetime, timedelta
 import ssl
 import json
 from gen_jwt import get_access_token
@@ -13,6 +14,19 @@ app = Flask(__name__)
 import requests
 botId =5094423
 
+user_commute_dict = {}
+class commute_record():
+    def __init__(self, userName, status, t):
+        self.userName = userName
+        self.status = status
+        self.t = t
+    
+    def make_msg(self):
+        time_str = self.t.strftime('%Y-%m-%d %H: %M')
+        msg = f'{self.userName} :  {self.status}, {time_str}\n'
+
+        return msg
+
 def add_user_profile_status(userId):
     url = f'https://www.worksapis.com/v1.0/users/{userId}/user-profile-statuses'
     headers = {
@@ -20,7 +34,7 @@ def add_user_profile_status(userId):
         'content-Type':'application/json'
     }
     request_body = {
-        "profileStatusId": "",
+        "profileStatusId": "CUSTOM01",
         "statusMessage": "test",
         
     }
@@ -29,6 +43,7 @@ def add_user_profile_status(userId):
     userProfileStatusId = response.json()['userProfileStatusId']
 
     return userProfileStatusId
+
 def get_user_profile_status(userId):
     global access_token
     url = f'https://www.worksapis.com/v1.0/users/{userId}/user-profile-statuses'
@@ -41,7 +56,8 @@ def get_user_profile_status(userId):
     # status 설정 x 한 경우
     if not data['userProfileStatuses']:
         userProfileStatusId = add_user_profile_status(userId)
-    userProfileStatusId = data['userProfileStatuses'][0]['userProfileStatusId']
+    else:
+        userProfileStatusId = data['userProfileStatuses'][0]['userProfileStatusId']
     return userProfileStatusId
 
 def modify_profile_status(userId, status):
@@ -73,19 +89,50 @@ def modify_profile_status(userId, status):
     response = requests.put(url, headers=headers, data=json.dumps(request_body))
     print('change status', response.json())
 
-def work_handler(userId):
-    
+
+def work_handler(userId, t):
+    global user_commute_dict
     # status change
     modify_profile_status(userId, status='CUSTOM01')
+    status = 'work'
     # 기록 - how?
+    name = get_userName_by_userId(userId)
+    user_commute_dict[userId] = commute_record(name, status, t)
 
-def workoff_handler(userId):
+def workoff_handler(userId, t):
+    global user_commute_dict
+
     modify_profile_status(userId, status='LEAVE_OFFICE')
+    status = 'workoff'
+    name = get_userName_by_userId(userId)
+    user_commute_dict[userId] = commute_record(name, status, t)
+
+def inqall_handler(userId, t):
+    global user_commute_dict
+    msg = ''
+    for key in user_commute_dict.keys():
+        msg += user_commute_dict[key].make_msg()
+
+    msg_to_user(userId, msg)
+
+
+def get_userName_by_userId(userId):
+    url = f'https://www.worksapis.com/v1.0/users/{userId}'
+
+    headers = headers = {
+        'Authorization' : f'Bearer {access_token}'
+    }
+    response = requests.get(url, headers=headers)
+    data = response.json()
+    name = data['userName']['lastName'] + data['userName']['firstName']
+    return name
 
 postback_handler_functions = {
     'work' : work_handler,
-    'workoff' : workoff_handler
+    'workoff' : workoff_handler,
+    'inqall' : inqall_handler
 }
+
 def msg_to_user(userId, msg):
     global access_token, botId
     token_url = f'https://www.worksapis.com/v1.0/bots/{botId}/users/{userId}/messages'
@@ -101,7 +148,6 @@ def msg_to_user(userId, msg):
         }
     }
     
-
     response = requests.post(token_url, headers=headers, data=json.dumps(request_body))
 
 async def message_handler(data):
@@ -117,10 +163,22 @@ async def message_handler(data):
         msg_to_user(userId, msg)
     else:
         postback_type = data['content']['postback']
-        postback_handler_functions[postback_type](userId)
+        t = data['issuedTime']
+        t = datetime.strptime(t, '%Y-%m-%dT%H:%M:%S.%fZ')
+        t += timedelta(hours=9)
+
+        # t = t.strftime('%Y-%m-%d %H: %M')
+        if userId in user_commute_dict.keys():
+            if user_commute_dict[userId].status == postback_type:
+                msg_to_user(userId, '출퇴근 잘못찍음')
+            else:
+                postback_handler_functions[postback_type](userId, t)
+        else:
+            postback_handler_functions[postback_type](userId, t)
     
 
     # print(response.json())
+    btnmessageToUser(botId, userId)
 
     return userId
 
@@ -265,6 +323,10 @@ def btnmessageToUser(botId, userId):
                 "type": "message",
                 "label": "퇴근",
                 "postback": "workoff"
+                }, {
+                "type": "message",
+                "label": "조회",
+                "postback" : "inqall"
                 }
             ]
         }
@@ -318,7 +380,7 @@ async def home():
     
     # register_persistent_menu()
     # userId = message_handler(data)
-    btnmessageToUser(botId, userId)
+    
 
     # richmenuId = '914034'
     # get_rich_menu()

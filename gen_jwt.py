@@ -23,8 +23,6 @@ def get_jwt_encode():
         'exp' : exp
     }
 
-
-
     with open(private_key_file, mode='rb') as file: # b is important -> binary
         private_key = file.read()
     # print(private_key)
