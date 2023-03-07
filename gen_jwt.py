@@ -35,7 +35,7 @@ def get_jwt_encode():
     jwt_encode = jwt.encode(JSON_Claimset, key=private_key, algorithm='RS256', headers=header)
     return jwt_encode
 
-def get_access_token():
+async def get_access_token():
 
     token_url = 'https://auth.worksmobile.com/oauth2/v2.0/token'
     headers = {
@@ -47,7 +47,7 @@ def get_access_token():
         'client_id' : client_id,
         'client_secret' : client_secret,
         'assertion' : jwt_encode,
-        'scope' : 'bot,user.read'
+        'scope' : 'bot,user,calendar'
     }
     response = requests.post(token_url, headers=headers, data=request_body)
     # print(response.headers)

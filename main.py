@@ -11,18 +11,83 @@ app = Flask(__name__)
 
 
 import requests
+botId =5094423
 
+def add_user_profile_status(userId):
+    url = f'https://www.worksapis.com/v1.0/users/{userId}/user-profile-statuses'
+    headers = {
+        'Authorization' : f'Bearer {access_token}',
+        'content-Type':'application/json'
+    }
+    request_body = {
+        "profileStatusId": "",
+        "statusMessage": "test",
+        
+    }
+    response = requests.post(url, headers=headers, data=json.dumps(request_body))
+    print('add user_profilestatus', response.json())
+    userProfileStatusId = response.json()['userProfileStatusId']
 
-
-def message_handler(data):
+    return userProfileStatusId
+def get_user_profile_status(userId):
     global access_token
-    botId = 5094423
-    # print(data['type'])
-    userId = data['source']['userId']
-    # print(data['source']['userId'])
-    # print(data['content']['text'])
-    # # userId = g.userId
-    msg = data['content']['text']
+    url = f'https://www.worksapis.com/v1.0/users/{userId}/user-profile-statuses'
+    headers = headers = {
+        'Authorization' : f'Bearer {access_token}'
+    }
+    response = requests.get(url, headers=headers)
+    data = response.json()
+    print(data)
+    # status 설정 x 한 경우
+    if not data['userProfileStatuses']:
+        userProfileStatusId = add_user_profile_status(userId)
+    userProfileStatusId = data['userProfileStatuses'][0]['userProfileStatusId']
+    return userProfileStatusId
+
+def modify_profile_status(userId, status):
+    global access_token, botId
+
+    userProfileStatusId = get_user_profile_status(userId)
+    url = f'https://www.worksapis.com/v1.0/users/{userId}/user-profile-statuses/{userProfileStatusId}'
+    headers = {
+        'Authorization' : f'Bearer {access_token}',
+        'content-Type':'application/json'
+    }
+    request_body = {
+        "profileStatusId": status,
+        "statusMessage": "status test",
+        # "startTime": "2017-03-16T09:00:00+09:00",
+        # "endTime": "2017-03-18T18:00:00+09:00",
+        # "autoReplyMail": {
+        #     "internal": {
+        #     "content": "internal mail content",
+        #     "sentDirectlyToMe": true
+        #     },
+        #     "external": {
+        #     "content": "external mail content",
+        #     "sentDirectlyToMe": false
+        #     }
+        # }
+    }
+
+    response = requests.put(url, headers=headers, data=json.dumps(request_body))
+    print('change status', response.json())
+
+def work_handler(userId):
+    
+    # status change
+    modify_profile_status(userId, status='CUSTOM01')
+    # 기록 - how?
+
+def workoff_handler(userId):
+    modify_profile_status(userId, status='LEAVE_OFFICE')
+
+postback_handler_functions = {
+    'work' : work_handler,
+    'workoff' : workoff_handler
+}
+def msg_to_user(userId, msg):
+    global access_token, botId
     token_url = f'https://www.worksapis.com/v1.0/bots/{botId}/users/{userId}/messages'
     
     headers = {
@@ -32,19 +97,33 @@ def message_handler(data):
     request_body = {
         "content": {
             "type": "text",
-            "text": "msg"
+            "text": f"{msg}"
         }
     }
     
 
     response = requests.post(token_url, headers=headers, data=json.dumps(request_body))
 
+async def message_handler(data):
+
+    # print(data['type'])
+    userId = data['source']['userId']
+    # print(data['source']['userId'])
+    # print(data['content']['text'])
+    # # userId = g.userId
+    msg = data['content']['text']
+    if 'postback' not in data['content'].keys():
+        # get message
+        msg_to_user(userId, msg)
+    else:
+        postback_type = data['content']['postback']
+        postback_handler_functions[postback_type](userId)
+    
+
     # print(response.json())
 
     return userId
 
-def form_handler(data):
-    ...
 
 
 def register_rich_menu():
@@ -167,6 +246,7 @@ def add_richmenu_bot(botId, richmenuId, userId):
     requests.post(url, headers=headers)
 
 def btnmessageToUser(botId, userId):
+    print('btnmessage')
     url = f'https://www.worksapis.com/v1.0/bots/{botId}/users/{userId}/messages'
 
     headers = {
@@ -190,6 +270,25 @@ def btnmessageToUser(botId, userId):
         }
     }
     response = requests.post(url, headers=headers, data=json.dumps(request_body))
+    # print(response.json())
+
+
+async def leave_handler():
+    ...
+
+async def join_handler():
+    ...
+
+async def left_handler():
+    ...
+
+async def postback_handler(data):
+    print('postback handler - request data', data)
+    userId = data['source']['userId']
+    # postback data어떻게 오는지 확인하고 처리하기
+    issued_time = data['issuedTime']
+    action = data['data']
+    return userId
 
 functions = {
     'message' : message_handler,
@@ -197,31 +296,22 @@ functions = {
     'leave' : leave_handler,
     'join' : join_handler,
     'left' : left_handler
-
 }
-
-def postback_handler(data):
-
-    userId = data['source']['userId']
-    # postback data어떻게 오는지 확인하고 처리하기
-    issued_time = data['issuedTime']
-    action = data['data']
-    return userId
-
 
 access_token = None
 @app.route('/', methods=['GET', 'POST'])
-def home():
+async def home():
     global access_token
     if access_token == None:
-        token_data = get_access_token()
+        token_data = await get_access_token()
         access_token = token_data['access_token']
     # requests.get(api_url).json()  
 
     data = request.get_json()
     request_type = data['type']
-
-    userId = functions[request_type](data)
+    print(request_type)
+    print('request data', data)
+    userId = await functions[request_type](data)
 
 
     botId = 5094423
