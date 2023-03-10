@@ -1,12 +1,12 @@
 from flask import Flask, g, jsonify
 from flask import request
-
+from flask_apscheduler import APScheduler
 # from flask_restx import Resource
 
 from datetime import datetime, timedelta
 import ssl
 import json
-from gen_jwt import get_access_token
+from gen_jwt import get_access_token, refresh_access_token
 
 app = Flask(__name__)
 
@@ -28,6 +28,7 @@ class commute_record():
         return msg
 
 def add_user_profile_status(userId):
+    global access_token
     url = f'https://www.worksapis.com/v1.0/users/{userId}/user-profile-statuses'
     headers = {
         'Authorization' : f'Bearer {access_token}',
@@ -98,6 +99,9 @@ def work_handler(userId, t):
     # 기록 - how?
     name = get_userName_by_userId(userId)
     user_commute_dict[userId] = commute_record(name, status, t)
+    
+    # 완료 메시지 전송
+    msg_to_user(userId, t.strftime('%Y-%m-%d %H: %M') + ': 출근 완료!')
 
 def workoff_handler(userId, t):
     global user_commute_dict
@@ -106,6 +110,8 @@ def workoff_handler(userId, t):
     status = 'workoff'
     name = get_userName_by_userId(userId)
     user_commute_dict[userId] = commute_record(name, status, t)
+
+    msg_to_user(userId, t.strftime('%Y-%m-%d %H: %M') + ': 퇴근 완료!')
 
 def inqall_handler(userId, t):
     global user_commute_dict
@@ -117,6 +123,7 @@ def inqall_handler(userId, t):
 
 
 def get_userName_by_userId(userId):
+    global access_token
     url = f'https://www.worksapis.com/v1.0/users/{userId}'
 
     headers = headers = {
@@ -160,7 +167,8 @@ async def message_handler(data):
     msg = data['content']['text']
     if 'postback' not in data['content'].keys():
         # get message
-        msg_to_user(userId, msg)
+        # msg_to_user(userId, msg)
+        btnmessageToUser(botId, userId)
     else:
         postback_type = data['content']['postback']
         t = data['issuedTime']
@@ -178,7 +186,7 @@ async def message_handler(data):
     
 
     # print(response.json())
-    btnmessageToUser(botId, userId)
+    
 
     return userId
 
@@ -246,12 +254,8 @@ functions = {
 access_token = None
 @app.route('/', methods=['GET', 'POST'])
 async def home():
-    global access_token
-    if access_token == None:
-        token_data = await get_access_token()
-        access_token = token_data['access_token']
+    
     # requests.get(api_url).json()  
-
     data = request.get_json()
     request_type = data['type']
     print(request_type)
@@ -267,27 +271,36 @@ async def home():
 
     # richmenuId = '914034'
     # get_rich_menu()
-    # add_richmenu_bot(botId, richmenuId, userId)
+    # add_richmenu_bot(g.botId, richmenuId, userId)
     # register_rich_menu()
     # get_rich_menu()
     
 
     return 'hello world'
 
+class Config:
+    '''App configuration'''
+    SCHEDULER_API_ENABLED = True
 
-if __name__== '__main__':
-    # access_token
-    # botId = 5094423
-    # richmenuId = '914034'
-    # if access_token == None:
-    #     token_data = get_access_token()
-    #     access_token = token_data['access_token']
 
-    # # fixdefaultRichmenu()
-    # imageId = 'kr1.1678085096499435088.1678171496.1.5094423.0.0.0'
-    # set_richmenu_image(botId, richmenuId, imageId)
-    # upload_richmenu_image(botId)
-    
-    # ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS)
-    # ssl_context.load_cert_chain(certfile='ssl/Certificate.crt', keyfile='privkey.pem', password='secret')
-    app.run(debug=True, port=5000)# ssl_context=ssl_context)
+scheduler = APScheduler()
+@scheduler.task('interval', id='do_job_1', seconds=86000, misfire_grace_time=100)
+def do_refresh_token():
+    global token_data
+    print('refresh access token')
+    data = refresh_access_token(token_data['refresh_token'])
+    # print(token_data)
+    access_token = data['access_token']
+        
+
+token_data = None
+if access_token == None:
+    print('before app start get access token ')
+    token_data = get_access_token()
+    access_token = token_data['access_token']
+
+scheduler.init_app(app)
+scheduler.start()
+# ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+# ssl_context.load_cert_chain(certfile='ssl/Certificate.crt', keyfile='privkey.pem', password='secret')
+app.run(debug=True, port=5000)# ssl_context=ssl_context)
