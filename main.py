@@ -1,20 +1,90 @@
 from flask import Flask, g, jsonify
 from flask import request
 from flask_apscheduler import APScheduler
+from flask_sqlalchemy import SQLAlchemy
 # from flask_restx import Resource
 
+# DB
+# from models import User, CommuteRecord
+# from database import db_session
+
 from datetime import datetime, timedelta
+import requests
 import ssl
 import json
 from gen_jwt import get_access_token, refresh_access_token
 
 app = Flask(__name__)
+db = SQLAlchemy()
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///test.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 
-import requests
+## model 
+class User(db.Model):
+    __tablename__ = 'Users'
+
+    user_id = db.Column(db.String(32), primary_key=True)
+    name = db.Column(db.String(32))
+    commute_state = db.Column(db.String(32), default='work')
+    commutes = db.relationship('CommuteRecord', backref='Users', lazy=True)
+    
+
+class CommuteRecord(db.Model):
+    __tablename__ = 'CommuteRecords'
+    commute_id = db.Column(db.Integer, primary_key=True)
+    userid = db.Column(db.String(32), db.ForeignKey('Users.user_id'))
+
+    start_time = db.Column(db.DateTime, nullable=False)
+    end_time = db.Column(db.DateTime)
+
+db.init_app(app)
+# with app.app_context():
+#     db.create_all()
+
 botId =5094423
 
 user_commute_dict = {}
+
+def commit_user(user_id, user_name, status):
+    user = User(user_id=user_id, name=user_name, commute_state=status)
+    db.session.add(user)
+    db.session.commit()
+
+def user_status_update(user_id, status):
+    user = User.query.filter_by(user_id=user_id).first()
+    user.commute_state = status
+    db.session.commit()
+
+def workoff_commute_update(user_id, t):
+    commute = CommuteRecord.query.filter_by(userid=user_id).order_by(CommuteRecord.commute_id.desc()).first()
+    print(commute)
+    commute.end_time = t
+    db.session.commit()
+
+def commit_commute(user_id, t):
+    # t - datetime 형식 .. ? 
+    commute_record = CommuteRecord(
+        userid=user_id,
+        start_time=t
+    )
+
+    db.session.add(commute_record)
+    db.session.commit()
+
+def check_user_exists(user_id):
+    user = User.query.filter_by(user_id=user_id).first()
+    if user:
+        return True
+    else:
+        return False
+
+def query_users():
+    users = User.query.all()
+    for user in users:
+        print(user)
+    return users
+
 class commute_record():
     def __init__(self, userName, status, t):
         self.userName = userName
@@ -97,8 +167,14 @@ def work_handler(userId, t):
     modify_profile_status(userId, status='CUSTOM01')
     status = 'work'
     # 기록 - how?
-    name = get_userName_by_userId(userId)
-    user_commute_dict[userId] = commute_record(name, status, t)
+    if check_user_exists(userId):
+        ...
+    else:
+        name = get_userName_by_userId(userId)
+        commit_user(userId, name, status)
+    # user_commute_dict[userId] = commute_record(name, status, t)
+    user_status_update(userId, status)
+    commit_commute(userId, t)
     
     # 완료 메시지 전송
     msg_to_user(userId, t.strftime('%Y-%m-%d %H: %M') + ': 출근 완료!')
@@ -108,17 +184,28 @@ def workoff_handler(userId, t):
 
     modify_profile_status(userId, status='LEAVE_OFFICE')
     status = 'workoff'
-    name = get_userName_by_userId(userId)
-    user_commute_dict[userId] = commute_record(name, status, t)
+    if check_user_exists(userId):
+        ...
+    else:
+        name = get_userName_by_userId(userId)
+        commit_user(userId, name, status)
+    # user_commute_dict[userId] = commute_record(name, status, t)
+    # commit_commute(userId, t, status)
+    user_status_update(userId, status)
+    workoff_commute_update(userId, t)
 
     msg_to_user(userId, t.strftime('%Y-%m-%d %H: %M') + ': 퇴근 완료!')
 
 def inqall_handler(userId, t):
     global user_commute_dict
     msg = ''
-    for key in user_commute_dict.keys():
-        msg += user_commute_dict[key].make_msg()
-
+    # for key in user_commute_dict.keys():
+    #     msg += user_commute_dict[key].make_msg()
+    # user = User.query.all()
+    # print(1)
+    users = query_users()
+    for user in users:
+        msg += f'{user.name} - {user.commute_state} \n'
     msg_to_user(userId, msg)
 
 
@@ -291,7 +378,6 @@ def do_refresh_token():
     data = refresh_access_token(token_data['refresh_token'])
     # print(token_data)
     access_token = data['access_token']
-        
 
 token_data = None
 if access_token == None:
