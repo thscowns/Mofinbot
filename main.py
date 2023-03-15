@@ -79,6 +79,10 @@ def check_user_exists(user_id):
     else:
         return False
 
+def query_user(userId):
+     user = User.query.filter_by(user_id=userId).first()
+     return user
+
 def query_users():
     users = User.query.all()
     for user in users:
@@ -180,7 +184,7 @@ def work_handler(userId, t):
     msg_to_user(userId, t.strftime('%Y-%m-%d %H: %M') + ': 출근 완료!')
 
 def workoff_handler(userId, t):
-    global user_commute_dict
+    # global user_commute_dict
 
     modify_profile_status(userId, status='LEAVE_OFFICE')
     status = 'workoff'
@@ -197,7 +201,7 @@ def workoff_handler(userId, t):
     msg_to_user(userId, t.strftime('%Y-%m-%d %H: %M') + ': 퇴근 완료!')
 
 def inqall_handler(userId, t):
-    global user_commute_dict
+    # global user_commute_dict
     msg = ''
     # for key in user_commute_dict.keys():
     #     msg += user_commute_dict[key].make_msg()
@@ -256,21 +260,26 @@ async def message_handler(data):
         # get message
         # msg_to_user(userId, msg)
         btnmessageToUser(botId, userId)
+    elif data['content']['postback'] not in postback_handler_functions.keys():
+        btnmessageToUser(botId, userId)
     else:
         postback_type = data['content']['postback']
         t = data['issuedTime']
         t = datetime.strptime(t, '%Y-%m-%dT%H:%M:%S.%fZ')
         t += timedelta(hours=9)
-
-        # t = t.strftime('%Y-%m-%d %H: %M')
-        if userId in user_commute_dict.keys():
-            if user_commute_dict[userId].status == postback_type:
+    
+        if check_user_exists(userId):
+            user = query_user(userId)
+            if user.commute_state == postback_type:
                 msg_to_user(userId, '출퇴근 잘못찍음')
             else:
                 postback_handler_functions[postback_type](userId, t)
         else:
-            postback_handler_functions[postback_type](userId, t)
-    
+            if postback_type == 'workoff':
+                msg_to_user(userId, '출근 먼저 찍어주세요')
+            else:
+                postback_handler_functions[postback_type](userId, t)
+
 
     # print(response.json())
     
@@ -334,12 +343,12 @@ functions = {
     'message' : message_handler,
     'postback' : postback_handler,
     'leave' : leave_handler,
-    'join' : join_handler,
+    'start' : join_handler,
     'left' : left_handler
 }
 
 access_token = None
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/', methods=['POST'])
 async def home():
     
     # requests.get(api_url).json()  
@@ -348,20 +357,6 @@ async def home():
     print(request_type)
     print('request data', data)
     userId = await functions[request_type](data)
-
-
-    botId = 5094423
-    
-    # register_persistent_menu()
-    # userId = message_handler(data)
-    
-
-    # richmenuId = '914034'
-    # get_rich_menu()
-    # add_richmenu_bot(g.botId, richmenuId, userId)
-    # register_rich_menu()
-    # get_rich_menu()
-    
 
     return 'hello world'
 
