@@ -4,12 +4,20 @@ import jwt
 import json
 import requests
 
-client_id = 'PXilJ4nxms_4dKdV7KkH'
-client_secret = 'RA9bWLrUAA'
+with open('config.json') as f:
+    config = json.load(f)
+    
+client_id = config['CLIENT_ID']
+client_secret = config['CLIENT_SECRET']
 
-service_account = 'ukubw.serviceaccount@mofin.kr'
-private_key_file = 'private_20230303103549.key'
+service_account = config['SERVICE_ACCOUNT']
+private_key_file = config['PRIVATE_KEY_FILE']
+# client_id = 'PXilJ4nxms_4dKdV7KkH'
+# client_secret = 'RA9bWLrUAA'
 
+# service_account = 'ukubw.serviceaccount@mofin.kr'
+# private_key_file = 'private_20230303103549.key'
+print(client_id, client_secret, service_account)
 
 def get_jwt_encode():
     iat = datetime.datetime.utcnow()
