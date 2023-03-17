@@ -368,7 +368,7 @@ class Config:
 scheduler = APScheduler()
 @scheduler.task('interval', id='do_job_1', seconds=86000, misfire_grace_time=100)
 def do_refresh_token():
-    global token_data
+    global token_data, access_token
     print('refresh access token')
     data = refresh_access_token(token_data['refresh_token'])
     # print(token_data)
